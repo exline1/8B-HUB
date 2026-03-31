@@ -1,0 +1,29 @@
+{
+    "name": "8B HUB",
+    "short_name": "8B HUB",
+    "description": "8-B sinf xotira arxivi",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#090910",
+    "theme_color": "#090910",
+    "orientation": "portrait",
+    "icons": [
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%23090910'/><text x='96' y='130' font-family='monospace' font-size='100' font-weight='900' text-anchor='middle' fill='white'>8</text><rect x='110' y='52' width='56' height='88' rx='10' fill='%23ff6b00'/><text x='138' y='116' font-family='monospace' font-size='72' font-weight='900' text-anchor='middle' fill='white'>B</text></svg>",
+            "sizes": "192x192",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%23090910'/><text x='256' y='350' font-family='monospace' font-size='280' font-weight='900' text-anchor='middle' fill='white'>8</text><rect x='290' y='130' width='150' height='240' rx='24' fill='%23ff6b00'/><text x='365' y='320' font-family='monospace' font-size='200' font-weight='900' text-anchor='middle' fill='white'>B</text></svg>",
+            "sizes": "512x512",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": [
+        "social",
+        "photo"
+    ],
+    "lang": "uz"
+}
