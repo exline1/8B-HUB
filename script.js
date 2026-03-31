@@ -1,36 +1,52 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, updateDoc, orderBy, query } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, updateDoc, orderBy, query, getDocs, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-const app = initializeApp({
+const firebaseConfig = {
     apiKey: "AIzaSyBqIgNlvEt58sf-_b4vjFwRsV-NwH6ocKU",
     authDomain: "b-hub-37600.firebaseapp.com",
     projectId: "b-hub-37600",
     storageBucket: "b-hub-37600.firebasestorage.app",
     messagingSenderId: "198733477541",
     appId: "1:198733477541:web:878f5f21cccf28256abf4c"
-});
+};
+
+const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
 const colRef = collection(db, "media");
 
 const IMGBB_KEY = "fd4821118d2741783bd5d8e826dcc3ce";
 const CLD_CLOUD = "dz3gpts80";
 const CLD_PRESET = "8bhubb";
 const DELETE_PASS = "exline";
+const ADMIN_EMAIL = "exlineexslize@gmail.com";
+const CHAT_PASS_KEY = "8bhub_chat_pass";
 
-// ── STATE ─────────────────────────────────────────────────
+// Default chat password — admin sozlamalardan o'zgartiriladi
+let CHAT_PASS = localStorage.getItem(CHAT_PASS_KEY) || "sinf2024";
+
+// ── STATE ──────────────────────────────────────────────────
 let mediaItems = [], filteredItems = [];
 let currentFilter = 'all', currentSort = 'date';
 let selectedType = null, selectedPhoto = null, selectedVideo = null;
 let lbIndex = 0, pendingDeleteId = null, pendingUnlockIdx = null;
 let lockSectionOpen = false;
+let currentUser = null;
+let currentLbItemId = null;
+let chatUnsubscribe = null;
+let chatUnlocked = false;
+let blockedUsers = [];
 
-// ⚠️ Memory only — sahifa yangilanganda barcha qulflar qayta yopiladi
 const unlockedSet = new Set();
-const saveUnlocked = () => { /* memory only — intentionally empty */ };
+const saveUnlocked = () => {};
+
+const likedSet = new Set(JSON.parse(localStorage.getItem('8bhub_liked') || '[]'));
+const saveLiked = () => localStorage.setItem('8bhub_liked', JSON.stringify([...likedSet]));
 
 const $ = id => document.getElementById(id);
 
-// ── ICONS ─────────────────────────────────────────────────
+// ── ICONS ──────────────────────────────────────────────────
 const IC = {
     img: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
     vid: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`,
@@ -44,7 +60,33 @@ const IC = {
     lockOpen: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`,
 };
 
-// ── TOAST ─────────────────────────────────────────────────
+// ── TIME FORMAT ────────────────────────────────────────────
+function formatDate(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const pad = n => String(n).padStart(2, '0');
+    const day = pad(d.getDate());
+    const mon = pad(d.getMonth() + 1);
+    const yr = d.getFullYear();
+    const h = pad(d.getHours());
+    const m = pad(d.getMinutes());
+    return `${day}.${mon}.${yr} ${h}:${m}`;
+}
+
+function timeAgo(ts) {
+    if (!ts) return '';
+    const diff = Date.now() - ts;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'hozir';
+    if (mins < 60) return `${mins} daqiqa oldin`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs} soat oldin`;
+    const days = Math.floor(hrs / 24);
+    if (days < 7) return `${days} kun oldin`;
+    return formatDate(ts);
+}
+
+// ── TOAST ──────────────────────────────────────────────────
 function showToast(msg, type = 'success') {
     const icons = {
         success: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
@@ -58,7 +100,102 @@ function showToast(msg, type = 'success') {
     setTimeout(() => t.remove(), 3500);
 }
 
-// ── FIREBASE REALTIME ─────────────────────────────────────
+// ── GOOGLE AUTH ────────────────────────────────────────────
+const provider = new GoogleAuthProvider();
+
+onAuthStateChanged(auth, async user => {
+    currentUser = user;
+    updateAuthUI();
+    if (user) {
+        // Check blocked
+        const bDoc = await getDoc(doc(db, 'blocked', user.uid));
+        if (bDoc.exists()) {
+            showToast("Siz bloklangansiz!", 'error');
+            await signOut(auth);
+            return;
+        }
+        // Auto-fill author in upload modal
+        const authorEl = $('mediaAuthor');
+        if (authorEl && !authorEl.value) {
+            authorEl.value = user.displayName || '';
+        }
+    }
+});
+
+function updateAuthUI() {
+    const loginBtn = $('loginBtn');
+    const mobileLoginBtn = $('mobileLoginBtn');
+    const userPill = $('userPill');
+    const adminMenuBtn = $('adminMenuBtn');
+
+    if (currentUser) {
+        if (loginBtn) loginBtn.style.display = 'none';
+        if (mobileLoginBtn) mobileLoginBtn.style.display = 'none';
+        if (userPill) {
+            userPill.style.display = 'flex';
+            $('userAvatar').src = currentUser.photoURL || '';
+            $('userDisplayName').textContent = currentUser.displayName || 'User';
+        }
+        if (adminMenuBtn) {
+            adminMenuBtn.style.display = currentUser.email === ADMIN_EMAIL ? 'block' : 'none';
+        }
+        // Update menu
+        const menuAvatar = $('userMenuAvatar');
+        if (menuAvatar) menuAvatar.src = currentUser.photoURL || '';
+        const menuName = $('userMenuName');
+        if (menuName) menuName.textContent = currentUser.displayName || '';
+        const menuEmail = $('userMenuEmail');
+        if (menuEmail) menuEmail.textContent = currentUser.email || '';
+    } else {
+        if (loginBtn) loginBtn.style.display = 'flex';
+        if (mobileLoginBtn) mobileLoginBtn.style.display = 'flex';
+        if (userPill) userPill.style.display = 'none';
+        if ($('userMenu')) $('userMenu').style.display = 'none';
+    }
+}
+
+window.doGoogleLogin = async () => {
+    try {
+        await signInWithPopup(auth, provider);
+        closeLoginModal();
+        showToast('Xush kelibsiz! 👋', 'success');
+    } catch (e) {
+        showToast('Login xatolik: ' + e.message, 'error');
+    }
+};
+
+window.doLogout = async () => {
+    await signOut(auth);
+    chatUnlocked = false;
+    if ($('userMenu')) $('userMenu').style.display = 'none';
+    showToast("Chiqildi", 'info');
+};
+
+window.toggleUserMenu = () => {
+    const menu = $('userMenu');
+    if (!menu) return;
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+};
+
+// Close menu on outside click
+document.addEventListener('click', e => {
+    const pill = $('userPill');
+    const menu = $('userMenu');
+    if (menu && pill && !pill.contains(e.target) && !menu.contains(e.target)) {
+        menu.style.display = 'none';
+    }
+});
+
+window.openLoginModal = () => {
+    $('loginModal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+};
+window.closeLoginModal = () => {
+    $('loginModal').classList.remove('open');
+    document.body.style.overflow = '';
+};
+
+// ── FIREBASE REALTIME ──────────────────────────────────────
 onSnapshot(query(colRef, orderBy("date", "desc")), snap => {
     mediaItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     $('loadingWrap').style.display = 'none';
@@ -75,7 +212,7 @@ function updateStats() {
     $('statLikes').textContent = mediaItems.reduce((s, m) => s + (m.likes || 0), 0);
 }
 
-// ── FILTER / SORT ─────────────────────────────────────────
+// ── FILTER / SORT ──────────────────────────────────────────
 window.filterMedia = type => {
     currentFilter = type;
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -90,16 +227,12 @@ window.filterMedia = type => {
 
 window.sortMedia = by => {
     currentSort = by;
-    ['ft-new', 'ft-top'].forEach(id => $(id).classList.remove('active'));
+    ['ft-new', 'ft-top'].forEach(id => $(id) && $(id).classList.remove('active'));
     $(by === 'date' ? 'ft-new' : 'ft-top').classList.add('active');
     renderGrid();
 };
 
-// ── LIKED (local) ─────────────────────────────────────────
-const likedSet = new Set(JSON.parse(localStorage.getItem('8bhub_liked') || '[]'));
-const saveLiked = () => localStorage.setItem('8bhub_liked', JSON.stringify([...likedSet]));
-
-// ── RENDER GRID ───────────────────────────────────────────
+// ── RENDER GRID ────────────────────────────────────────────
 function renderGrid() {
     let items = currentFilter === 'all'
         ? mediaItems.slice()
@@ -122,12 +255,12 @@ function renderGrid() {
         const liked = likedSet.has(item.id);
         const hasLock = !!item.password;
         const unlocked = !hasLock || unlockedSet.has(item.id);
+        const isAdmin = currentUser && currentUser.email === ADMIN_EMAIL;
 
         const card = document.createElement('div');
         card.className = 'media-card';
         card.setAttribute('data-type', item.type);
 
-        // Thumbnail
         let thumbHtml;
         if (item.type === 'photo' && item.url) {
             thumbHtml = `<img class="thumb-img${hasLock && !unlocked ? ' thumb-blur' : ''}" src="${item.url}" alt="" loading="lazy">`;
@@ -143,16 +276,22 @@ function renderGrid() {
                 <div class="lock-overlay-text">Parol kerak</div>
             </div>` : '';
 
-        // Lock badge — agar ochilgan bo'lsa bosish bilan qayta quflanadi
         const lockBadge = hasLock
-            ? `<button class="lock-badge${unlocked ? ' unlocked' : ''}" aria-label="${unlocked ? 'Qayta qulflash' : 'Ochish'}">${unlocked ? IC.lockOpen : IC.lock}</button>`
+            ? `<button class="lock-badge${unlocked ? ' unlocked' : ''}">${unlocked ? IC.lockOpen : IC.lock}</button>`
             : '';
 
         const playOverlay = (isVid && unlocked)
             ? `<div class="play-overlay"><div class="play-circle">${IC.play}</div></div>`
             : '';
 
-        // O'chirish tugmasi har doim ko'rinadi (qulflangan + ochilgan ikkalasida ham)
+        // Admin: delete without password
+        const deleteBtn = isAdmin
+            ? `<button class="delete-btn admin-delete" aria-label="O'chirish (admin)">${IC.trash}</button>`
+            : `<button class="delete-btn" aria-label="O'chirish">${IC.trash}</button>`;
+
+        // Date/time badge
+        const dateBadge = item.date ? `<div class="card-date">${formatDate(item.date)}</div>` : '';
+
         card.innerHTML = `
             <div class="thumb-wrap">
                 ${thumbHtml}
@@ -160,10 +299,11 @@ function renderGrid() {
                 ${lockBadge}
                 ${lockOverlay}
                 ${playOverlay}
-                <button class="delete-btn" aria-label="O'chirish">${IC.trash}</button>
+                ${deleteBtn}
             </div>
             <div class="card-body">
                 <div class="card-title">${item.title || 'Nomsiz'}</div>
+                ${dateBadge}
                 <div class="card-meta">
                     <div class="card-author">
                         <div class="ava">${(item.author || 'A')[0].toUpperCase()}</div>
@@ -177,20 +317,23 @@ function renderGrid() {
             e.stopPropagation();
             toggleLike(item.id, item.likes || 0, liked);
         });
-        card.querySelector('.delete-btn').addEventListener('click', e => {
+
+        const delBtn = card.querySelector('.delete-btn');
+        delBtn.addEventListener('click', e => {
             e.stopPropagation();
-            openPassModal(item.id);
+            if (isAdmin) {
+                adminDeleteMedia(item.id);
+            } else {
+                openPassModal(item.id);
+            }
         });
 
-        // Lock badge tugmasi — ochilgan bo'lsa qayta qulflash, yopilgan bo'lsa ochish modali
         const lb = card.querySelector('.lock-badge');
         if (lb) {
             lb.addEventListener('click', e => {
                 e.stopPropagation();
                 if (unlocked) {
-                    // Qayta qulflash
                     unlockedSet.delete(item.id);
-                    saveUnlocked();
                     renderGrid();
                     showToast('Qayta qulflandi 🔒', 'info');
                 } else {
@@ -208,14 +351,14 @@ function renderGrid() {
     });
 }
 
-// ── LIKE ──────────────────────────────────────────────────
+// ── LIKE ───────────────────────────────────────────────────
 async function toggleLike(id, cur, wasLiked) {
     if (wasLiked) likedSet.delete(id); else likedSet.add(id);
     saveLiked();
-    try { await updateDoc(doc(db, "media", id), { likes: wasLiked ? cur - 1 : cur + 1 }); } catch (e) { }
+    try { await updateDoc(doc(db, "media", id), { likes: wasLiked ? cur - 1 : cur + 1 }); } catch (e) {}
 }
 
-// ── DELETE MODAL ──────────────────────────────────────────
+// ── DELETE MODAL ───────────────────────────────────────────
 window.openPassModal = id => {
     pendingDeleteId = id;
     $('passInput').value = '';
@@ -246,7 +389,18 @@ window.confirmDelete = async () => {
     }
 };
 
-// ── UNLOCK MODAL ──────────────────────────────────────────
+// Admin: delete without password
+async function adminDeleteMedia(id) {
+    if (!confirm("O'chirishni tasdiqlaysizmi?")) return;
+    try {
+        await deleteDoc(doc(db, "media", id));
+        showToast("Admin: O'chirildi ✓", 'success');
+    } catch (e) {
+        showToast("Xatolik: " + e.message, 'error');
+    }
+}
+
+// ── UNLOCK MODAL ───────────────────────────────────────────
 window.openUnlockModal = idx => {
     pendingUnlockIdx = idx;
     const item = filteredItems[idx];
@@ -285,7 +439,6 @@ window.submitUnlock = () => {
 
     if ($('unlockInput').value === item.password) {
         unlockedSet.add(item.id);
-        saveUnlocked();
         const idx = pendingUnlockIdx;
         closeUnlockModal();
         renderGrid();
@@ -301,11 +454,18 @@ window.submitUnlock = () => {
     }
 };
 
-// ── UPLOAD MODAL ──────────────────────────────────────────
+// ── UPLOAD MODAL ───────────────────────────────────────────
 window.openUploadModal = () => {
     resetModal();
     $('uploadModal').classList.add('open');
     document.body.style.overflow = 'hidden';
+    // Auto-fill author if logged in
+    if (currentUser) {
+        setTimeout(() => {
+            const authorEl = $('mediaAuthor');
+            if (authorEl) authorEl.value = currentUser.displayName || '';
+        }, 50);
+    }
 };
 window.closeUploadModal = () => {
     $('uploadModal').classList.remove('open');
@@ -314,31 +474,24 @@ window.closeUploadModal = () => {
 };
 
 function resetModal() {
-    selectedType = null;
-    selectedPhoto = null;
-    selectedVideo = null;
+    selectedType = null; selectedPhoto = null; selectedVideo = null;
     lockSectionOpen = false;
-
     $('step1').classList.add('active');
     $('step2').classList.remove('active');
     $('optPhoto').classList.remove('selected');
     $('optVideo').classList.remove('selected');
-
     clearPreview('filePreview', 'fileInput', 'dropZone', 'photoSizeBar');
     clearPreview('videoPreview', 'videoInput', 'videoDzZone', 'videoSizeBar');
-
     $('mediaTitle').value = '';
     $('mediaAuthor').value = '';
     const mp = $('mediaPassword');
     if (mp) mp.value = '';
-
     const ls = $('lockSection');
     if (ls) { ls.style.maxHeight = '0'; ls.style.overflow = 'hidden'; }
     const ch = $('lockChevron');
     if (ch) ch.style.transform = 'rotate(0deg)';
     const lb = $('lockToggleBtn');
     if (lb) lb.classList.remove('active');
-
     $('progressWrap').classList.remove('show');
     $('progressFill').style.width = '0%';
     $('submitBtn').disabled = true;
@@ -351,8 +504,7 @@ window.goStep1 = () => {
 
 window.selectType = type => {
     selectedType = type;
-    selectedPhoto = null;
-    selectedVideo = null;
+    selectedPhoto = null; selectedVideo = null;
     $('optPhoto').classList.toggle('selected', type === 'photo');
     $('optVideo').classList.toggle('selected', type === 'video');
     $('photoDz').style.display = type === 'photo' ? '' : 'none';
@@ -364,68 +516,46 @@ window.selectType = type => {
     $('submitBtn').disabled = true;
 };
 
-// ── LOCK AUTH (qulf qo'yishdan avval exline tasdiqlanadi) ────
 window.toggleLockSection = () => {
-    // Agar allaqachon ochiq bo'lsa — yopish
-    if (lockSectionOpen) {
-        _closeLockSection();
-        return;
-    }
-    // Yopiq bo'lsa — avval exline so'rash
+    if (lockSectionOpen) { _closeLockSection(); return; }
     $('lockAuthInput').value = '';
     $('lockAuthError').classList.remove('show');
     $('lockAuthModal').classList.add('open');
     document.body.style.overflow = 'hidden';
     setTimeout(() => $('lockAuthInput').focus(), 300);
 };
-
 window.closeLockAuthModal = () => {
     $('lockAuthModal').classList.remove('open');
-    document.body.style.overflow = 'hidden'; // upload modal hali ochiq
+    document.body.style.overflow = 'hidden';
     $('lockAuthInput').value = '';
     $('lockAuthError').classList.remove('show');
 };
-
 window.confirmLockAuth = () => {
     if ($('lockAuthInput').value !== DELETE_PASS) {
         $('lockAuthError').classList.add('show');
         $('lockAuthInput').value = '';
         $('lockAuthInput').focus();
-        const inp = $('lockAuthInput');
-        inp.classList.add('shake');
-        setTimeout(() => inp.classList.remove('shake'), 400);
         return;
     }
-    // Parol to'g'ri — modal yopib, qulf bo'limini ochamiz
-    $('lockAuthModal').classList.remove('open');
-    document.body.style.overflow = 'hidden';
-    $('lockAuthInput').value = '';
+    closeLockAuthModal();
     _openLockSection();
 };
-
 function _openLockSection() {
     lockSectionOpen = true;
     const ls = $('lockSection');
+    if (ls) { ls.style.maxHeight = '300px'; ls.style.overflow = 'visible'; }
     const ch = $('lockChevron');
-    const lb = $('lockToggleBtn');
-    if (!ls) return;
-    ls.style.maxHeight = '200px';
-    ls.style.overflow = 'visible';
     if (ch) ch.style.transform = 'rotate(180deg)';
+    const lb = $('lockToggleBtn');
     if (lb) lb.classList.add('active');
-    const mp = $('mediaPassword');
-    if (mp) { mp.value = 'exline'; setTimeout(() => mp.focus(), 120); }
 }
-
 function _closeLockSection() {
     lockSectionOpen = false;
     const ls = $('lockSection');
+    if (ls) { ls.style.maxHeight = '0'; ls.style.overflow = 'hidden'; }
     const ch = $('lockChevron');
-    const lb = $('lockToggleBtn');
-    if (!ls) return;
-    ls.style.maxHeight = '0';
-    ls.style.overflow = 'hidden';
     if (ch) ch.style.transform = 'rotate(0deg)';
+    const lb = $('lockToggleBtn');
     if (lb) lb.classList.remove('active');
     const mp = $('mediaPassword');
     if (mp) mp.value = '';
@@ -442,79 +572,41 @@ window.togglePassVis = (inputId, btn) => {
     if (h) h.style.display = isPass ? '' : 'none';
 };
 
-// ── PHOTO drag & drop ─────────────────────────────────────
+// ── PHOTO drag & drop ──────────────────────────────────────
 const dz = $('dropZone');
 dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
 dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
-dz.addEventListener('drop', e => {
-    e.preventDefault();
-    dz.classList.remove('drag-over');
-    const f = e.dataTransfer.files[0];
-    if (f) processPhoto(f);
-});
-window.handleFileSelect = e => {
-    const f = e.target.files[0];
-    if (f) processPhoto(f);
-};
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); const f = e.dataTransfer.files[0]; if (f) processPhoto(f); });
+window.handleFileSelect = e => { const f = e.target.files[0]; if (f) processPhoto(f); };
 
 function processPhoto(f) {
-    if (!f || !f.type.startsWith('image/')) {
-        showToast('Faqat rasm fayl (JPG, PNG, GIF)!', 'error');
-        return;
-    }
-    if (f.size > 32 * 1024 * 1024) {
-        showToast('Rasm 32MB dan katta!', 'error');
-        return;
-    }
+    if (!f || !f.type.startsWith('image/')) { showToast('Faqat rasm fayl!', 'error'); return; }
+    if (f.size > 32 * 1024 * 1024) { showToast('Rasm 32MB dan katta!', 'error'); return; }
     selectedPhoto = f;
     showPreview('filePreview', 'fileInput', 'dropZone', URL.createObjectURL(f), 'image');
     showSizeBar('photoSizeBar', 'photoSizeName', 'photoSizeVal', 'photoSizeFill', f, 32);
     $('submitBtn').disabled = false;
 }
+window.removePhotoFile = () => { selectedPhoto = null; clearPreview('filePreview', 'fileInput', 'dropZone', 'photoSizeBar'); $('submitBtn').disabled = true; };
 
-window.removePhotoFile = () => {
-    selectedPhoto = null;
-    clearPreview('filePreview', 'fileInput', 'dropZone', 'photoSizeBar');
-    $('submitBtn').disabled = true;
-};
-
-// ── VIDEO drag & drop ─────────────────────────────────────
+// ── VIDEO drag & drop ──────────────────────────────────────
 const vdz = $('videoDzZone');
 vdz.addEventListener('dragover', e => { e.preventDefault(); vdz.classList.add('drag-over'); });
 vdz.addEventListener('dragleave', () => vdz.classList.remove('drag-over'));
-vdz.addEventListener('drop', e => {
-    e.preventDefault();
-    vdz.classList.remove('drag-over');
-    const f = e.dataTransfer.files[0];
-    if (f) processVideo(f);
-});
-window.handleVideoSelect = e => {
-    const f = e.target.files[0];
-    if (f) processVideo(f);
-};
+vdz.addEventListener('drop', e => { e.preventDefault(); vdz.classList.remove('drag-over'); const f = e.dataTransfer.files[0]; if (f) processVideo(f); });
+window.handleVideoSelect = e => { const f = e.target.files[0]; if (f) processVideo(f); };
 
 function processVideo(f) {
-    if (!f || !f.type.startsWith('video/')) {
-        showToast('Faqat video fayl!', 'error');
-        return;
-    }
-    if (f.size > 100 * 1024 * 1024) {
-        showToast('Video 100MB dan katta!', 'error');
-        return;
-    }
+    if (!f || !f.type.startsWith('video/')) { showToast('Faqat video fayl!', 'error'); return; }
+    if (f.size > 100 * 1024 * 1024) { showToast('Video 100MB dan katta!', 'error'); return; }
     selectedVideo = f;
     showPreview('videoPreview', 'videoInput', 'videoDzZone', URL.createObjectURL(f), 'video');
     showSizeBar('videoSizeBar', 'videoSizeName', 'videoSizeVal', 'videoSizeFill', f, 100);
     $('submitBtn').disabled = false;
 }
+window.removeVideoFile = () => { selectedVideo = null; clearPreview('videoPreview', 'videoInput', 'videoDzZone', 'videoSizeBar'); $('submitBtn').disabled = true; };
 
-window.removeVideoFile = () => {
-    selectedVideo = null;
-    clearPreview('videoPreview', 'videoInput', 'videoDzZone', 'videoSizeBar');
-    $('submitBtn').disabled = true;
-};
-
-// ── HELPERS ───────────────────────────────────────────────
+// ── HELPERS ────────────────────────────────────────────────
 function showPreview(previewId, inputId, dzId, src, kind) {
     const pr = $(previewId);
     const rm = pr.querySelector('.fp-remove');
@@ -526,7 +618,6 @@ function showPreview(previewId, inputId, dzId, src, kind) {
     pr.classList.add('show');
     $(dzId).style.display = 'none';
 }
-
 function clearPreview(previewId, inputId, dzId, sizeBarId) {
     const pr = $(previewId);
     const rm = pr.querySelector('.fp-remove');
@@ -536,7 +627,6 @@ function clearPreview(previewId, inputId, dzId, sizeBarId) {
     $(dzId).style.display = '';
     if (sizeBarId) $(sizeBarId).classList.remove('show');
 }
-
 function showSizeBar(barId, nameId, valId, fillId, f, maxMb) {
     $(barId).classList.add('show');
     const mb = (f.size / 1024 / 1024).toFixed(1);
@@ -548,10 +638,15 @@ function showSizeBar(barId, nameId, valId, fillId, f, maxMb) {
     $(fillId).style.background = pct > 80 ? '#ff6b6b' : 'linear-gradient(90deg,#ff6b00,#ff9a3c)';
 }
 
-// ── SUBMIT ────────────────────────────────────────────────
+// ── SUBMIT ─────────────────────────────────────────────────
 window.submitMedia = async () => {
     const title = $('mediaTitle').value.trim() || 'Nomsiz';
-    const author = $('mediaAuthor').value.trim() || 'Anonim';
+    let author = $('mediaAuthor').value.trim() || 'Anonim';
+    // If logged in, use display name
+    if (currentUser && currentUser.displayName) {
+        author = currentUser.displayName;
+        $('mediaAuthor').value = author;
+    }
     const pwdEl = $('mediaPassword');
     const password = pwdEl ? pwdEl.value.trim() : '';
 
@@ -560,41 +655,24 @@ window.submitMedia = async () => {
 
     let url = '', thumbnail = '';
 
-    // ─── RASM yuklash → ImgBB ─────────────────────────────
     if (selectedType === 'photo') {
-        if (!selectedPhoto) {
-            showToast('Rasm tanlanmagan!', 'error');
-            resetProgress();
-            return;
-        }
+        if (!selectedPhoto) { showToast('Rasm tanlanmagan!', 'error'); resetProgress(); return; }
         try {
             setProg(10, 'Rasm yuklanmoqda...');
             const fd = new FormData();
             fd.append('image', selectedPhoto);
-            const r = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, {
-                method: 'POST',
-                body: fd
-            });
+            const r = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: 'POST', body: fd });
             if (!r.ok) throw new Error('Network: ' + r.status);
             const j = await r.json();
             if (!j.success) throw new Error('ImgBB: ' + JSON.stringify(j.error));
             url = j.data.url;
             thumbnail = (j.data.thumb && j.data.thumb.url) ? j.data.thumb.url : j.data.url;
             setProg(80, 'Saqlanmoqda...');
-        } catch (e) {
-            showToast('Rasm yuklanmadi: ' + e.message, 'error');
-            resetProgress();
-            return;
-        }
+        } catch (e) { showToast('Rasm yuklanmadi: ' + e.message, 'error'); resetProgress(); return; }
     }
 
-    // ─── VIDEO yuklash → Cloudinary ───────────────────────
     if (selectedType === 'video') {
-        if (!selectedVideo) {
-            showToast('Video tanlanmagan!', 'error');
-            resetProgress();
-            return;
-        }
+        if (!selectedVideo) { showToast('Video tanlanmagan!', 'error'); resetProgress(); return; }
         try {
             setProg(5, 'Video tayyorlanmoqda...');
             const fd = new FormData();
@@ -610,73 +688,34 @@ window.submitMedia = async () => {
                         setProg(p, `Yuklanmoqda... ${Math.round(ev.loaded / ev.total * 100)}%`);
                     }
                 };
-                xhr.onload = () => {
-                    try { resolve(JSON.parse(xhr.responseText)); }
-                    catch (e) { reject(new Error('JSON parse error')); }
-                };
+                xhr.onload = () => { try { resolve(JSON.parse(xhr.responseText)); } catch (e) { reject(new Error('JSON parse error')); } };
                 xhr.onerror = () => reject(new Error('Network error'));
                 xhr.send(fd);
             });
 
-            if (result.error) {
-                // Cloudinary preset xatoligi
-                if (result.error.message && result.error.message.includes('preset')) {
-                    showToast('Cloudinary preset topilmadi! Quyidagicha sozlang:', 'error');
-                    setTimeout(() => {
-                        alert(
-                            'Cloudinary sozlash:\n\n' +
-                            '1. cloudinary.com ga kiring\n' +
-                            '2. Settings > Upload > Upload presets\n' +
-                            '3. "Add upload preset" bosing\n' +
-                            '4. Preset name: 8bhubb\n' +
-                            '5. Signing mode: Unsigned\n' +
-                            '6. Save'
-                        );
-                    }, 500);
-                } else {
-                    showToast('Cloudinary xatolik: ' + result.error.message, 'error');
-                }
-                resetProgress();
-                return;
-            }
+            if (result.error) { showToast('Cloudinary xatolik: ' + result.error.message, 'error'); resetProgress(); return; }
 
             url = result.secure_url;
-            // Video thumbnail — birinchi kadr
-            thumbnail = result.secure_url
-                .replace('/upload/', '/upload/so_0,w_640,h_400,c_fill,f_jpg/')
-                .replace(/\.[^/.]+$/, '.jpg');
+            thumbnail = result.secure_url.replace('/upload/', '/upload/so_0,w_640,h_400,c_fill,f_jpg/').replace(/\.[^/.]+$/, '.jpg');
             setProg(88, 'Saqlanmoqda...');
-
-        } catch (e) {
-            showToast('Video yuklanmadi: ' + e.message, 'error');
-            resetProgress();
-            return;
-        }
+        } catch (e) { showToast('Video yuklanmadi: ' + e.message, 'error'); resetProgress(); return; }
     }
 
-    // ─── Firestore ga saqlash ─────────────────────────────
     try {
         const docData = {
-            title,
-            author,
-            type: selectedType,
-            url,
-            thumbnail: thumbnail || '',
-            likes: 0,
-            date: Date.now()
+            title, author, type: selectedType, url, thumbnail: thumbnail || '',
+            likes: 0, date: Date.now(),
+            uploaderUid: currentUser ? currentUser.uid : null,
+            uploaderEmail: currentUser ? currentUser.email : null,
         };
         if (password) docData.password = password;
-
         await addDoc(colRef, docData);
         setProg(100, 'Saqlandi!');
         setTimeout(() => {
             closeUploadModal();
             showToast(password ? 'Parolli media yuklandi!' : 'Muvaffaqiyatli yuklandi!', 'success');
         }, 400);
-    } catch (e) {
-        showToast('Saqlashda xatolik: ' + e.message, 'error');
-        resetProgress();
-    }
+    } catch (e) { showToast('Saqlashda xatolik: ' + e.message, 'error'); resetProgress(); }
 };
 
 function setProg(pct, txt) {
@@ -689,7 +728,7 @@ function resetProgress() {
     $('submitBtn').disabled = false;
 }
 
-// ── LIGHTBOX ──────────────────────────────────────────────
+// ── LIGHTBOX ───────────────────────────────────────────────
 window.openLightbox = idx => {
     lbIndex = idx;
     renderLightbox();
@@ -698,27 +737,19 @@ window.openLightbox = idx => {
 };
 window.closeLightbox = () => {
     const el = $('lbMedia').querySelector('video, iframe');
-    if (el) {
-        if (el.tagName === 'VIDEO') el.pause();
-        else el.src = '';
-    }
+    if (el) { if (el.tagName === 'VIDEO') el.pause(); else el.src = ''; }
     $('lightbox').classList.remove('open');
     document.body.style.overflow = '';
     $('lbMedia').innerHTML = '';
+    currentLbItemId = null;
 };
 window.lbNav = dir => {
     const el = $('lbMedia').querySelector('video, iframe');
-    if (el) {
-        if (el.tagName === 'VIDEO') el.pause();
-        else el.src = '';
-    }
+    if (el) { if (el.tagName === 'VIDEO') el.pause(); else el.src = ''; }
     const newIdx = (lbIndex + dir + filteredItems.length) % filteredItems.length;
     const next = filteredItems[newIdx];
     if (next && next.password && !unlockedSet.has(next.id)) {
-        lbIndex = newIdx;
-        closeLightbox();
-        openUnlockModal(newIdx);
-        return;
+        lbIndex = newIdx; closeLightbox(); openUnlockModal(newIdx); return;
     }
     lbIndex = newIdx;
     renderLightbox();
@@ -727,16 +758,16 @@ window.lbNav = dir => {
 function renderLightbox() {
     const item = filteredItems[lbIndex];
     if (!item) return;
+    currentLbItemId = item.id;
+
     const m = $('lbMedia');
     m.innerHTML = '';
 
     if (item.type === 'photo') {
         const img = document.createElement('img');
-        img.src = item.url || '';
-        img.alt = item.title || '';
+        img.src = item.url || ''; img.alt = item.title || '';
         m.appendChild(img);
     } else {
-        // YouTube tekshirish
         const ytMatch = (item.url || '').match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/);
         if (ytMatch) {
             const f = document.createElement('iframe');
@@ -746,37 +777,33 @@ function renderLightbox() {
             m.appendChild(f);
         } else {
             const v = document.createElement('video');
-            v.src = item.url || '';
-            v.controls = true;
-            v.autoplay = true;
+            v.src = item.url || ''; v.controls = true; v.autoplay = true;
             v.style.cssText = 'border-radius:16px;background:#000;';
-            // iOS uchun
-            v.setAttribute('playsinline', '');
-            v.setAttribute('webkit-playsinline', '');
+            v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', '');
             m.appendChild(v);
         }
     }
 
     const liked = likedSet.has(item.id);
     const hasLock = !!item.password;
+    const isAdmin = currentUser && currentUser.email === ADMIN_EMAIL;
+
+    const adminDeleteHtml = isAdmin ? `<button class="lb-admin-delete-btn" title="Admin: O'chirish" onclick="adminDeleteMedia('${item.id}');closeLightbox()">${IC.trash}</button>` : '';
 
     $('lbInfo').innerHTML = `
         <div>
-            <div class="lb-title">
-                ${hasLock ? `<span class="lb-lock-icon">${IC.lockOpen}</span>` : ''}
-                ${item.title || 'Nomsiz'}
-            </div>
+            <div class="lb-title">${hasLock ? `<span class="lb-lock-icon">${IC.lockOpen}</span>` : ''}${item.title || 'Nomsiz'}</div>
             <div class="lb-author">${IC.user}${item.author || 'Anonim'}</div>
+            <div class="lb-date-info">${item.date ? formatDate(item.date) : ''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
             ${hasLock ? `<button class="lb-relock-btn" id="lbRelockBtn" title="Qayta qulflash">${IC.lock}</button>` : ''}
-            <button class="like-btn${liked ? ' liked' : ''}" id="lbLikeBtn">
-                ${liked ? IC.hF : IC.hE}<span>${item.likes || 0}</span>
-            </button>
+            ${adminDeleteHtml}
+            <button class="like-btn${liked ? ' liked' : ''}" id="lbLikeBtn">${liked ? IC.hF : IC.hE}<span>${item.likes || 0}</span></button>
         </div>`;
 
     $('lbLikeBtn').onclick = () => {
-        const it = mediaItems.find(m => m.id === item.id);
+        const it = mediaItems.find(x => x.id === item.id);
         if (!it) return;
         toggleLike(it.id, it.likes || 0, likedSet.has(it.id));
     };
@@ -785,24 +812,329 @@ function renderLightbox() {
     if (rlBtn) {
         rlBtn.onclick = () => {
             unlockedSet.delete(item.id);
-            saveUnlocked();
-            closeLightbox();
-            renderGrid();
+            closeLightbox(); renderGrid();
             showToast('Qayta qulflandi 🔒', 'info');
         };
     }
+
+    // Load comments
+    loadComments(item.id);
+
+    // Show/hide comment form
+    const form = $('lbCommentForm');
+    const hint = $('lbCommentLoginHint');
+    if (currentUser) {
+        if (form) form.style.display = 'flex';
+        if (hint) hint.style.display = 'none';
+    } else {
+        if (form) form.style.display = 'none';
+        if (hint) hint.style.display = 'flex';
+    }
 }
 
-// ── KEYBOARD ──────────────────────────────────────────────
+// ── COMMENTS ───────────────────────────────────────────────
+let commentsUnsub = null;
+
+function loadComments(mediaId) {
+    if (commentsUnsub) commentsUnsub();
+    const list = $('lbCommentsList');
+    if (!list) return;
+    list.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px 0">Yuklanmoqda...</div>';
+
+    const commRef = collection(db, 'media', mediaId, 'comments');
+    commentsUnsub = onSnapshot(query(commRef, orderBy('date', 'asc')), snap => {
+        list.innerHTML = '';
+        if (snap.empty) {
+            list.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px 0">Hali kommentariya yo\'q. Birinchi bo\'ling!</div>';
+            return;
+        }
+        snap.docs.forEach(d => {
+            const c = d.data();
+            const isAdmin = c.email === ADMIN_EMAIL;
+            const div = document.createElement('div');
+            div.className = 'comment-item';
+            div.innerHTML = `
+                <div class="comment-avatar">${(c.author || 'A')[0].toUpperCase()}</div>
+                <div class="comment-body">
+                    <div class="comment-author">${isAdmin ? '👑 ' : ''}${c.author || 'Anonim'}<span class="comment-time">${timeAgo(c.date)}</span></div>
+                    <div class="comment-text">${escHtml(c.text)}</div>
+                </div>
+                ${(currentUser && currentUser.email === ADMIN_EMAIL) ? `<button class="comment-delete-btn" onclick="deleteComment('${mediaId}','${d.id}')">✕</button>` : ''}
+            `;
+            list.appendChild(div);
+        });
+        list.scrollTop = list.scrollHeight;
+    });
+}
+
+window.submitComment = async () => {
+    if (!currentUser) { openLoginModal(); return; }
+    const inp = $('lbCommentInput');
+    const text = inp.value.trim();
+    if (!text || !currentLbItemId) return;
+    inp.value = '';
+    try {
+        await addDoc(collection(db, 'media', currentLbItemId, 'comments'), {
+            text,
+            author: currentUser.displayName || 'Anonim',
+            email: currentUser.email,
+            uid: currentUser.uid,
+            avatar: currentUser.photoURL || '',
+            date: Date.now()
+        });
+    } catch (e) {
+        showToast('Kommentariya yuborilmadi: ' + e.message, 'error');
+        inp.value = text;
+    }
+};
+
+window.deleteComment = async (mediaId, commentId) => {
+    try {
+        await deleteDoc(doc(db, 'media', mediaId, 'comments', commentId));
+        showToast("Kommentariya o'chirildi", 'success');
+    } catch (e) {
+        showToast("Xatolik: " + e.message, 'error');
+    }
+};
+
+function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── CHAT ───────────────────────────────────────────────────
+window.openChatModal = () => {
+    $('chatModal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+
+    if (!currentUser) {
+        showChatLock();
+        showToast("Chat uchun avval login qiling", 'info');
+        return;
+    }
+
+    if (chatUnlocked) {
+        showChatContent();
+    } else {
+        showChatLock();
+    }
+};
+
+window.closeChatModal = () => {
+    $('chatModal').classList.remove('open');
+    document.body.style.overflow = '';
+    if (chatUnsubscribe) { chatUnsubscribe(); chatUnsubscribe = null; }
+};
+
+function showChatLock() {
+    $('chatLockScreen').style.display = 'block';
+    $('chatContent').style.display = 'none';
+    $('chatPassInput').value = '';
+    $('chatPassError').classList.remove('show');
+    setTimeout(() => $('chatPassInput').focus(), 300);
+}
+
+function showChatContent() {
+    $('chatLockScreen').style.display = 'none';
+    $('chatContent').style.display = 'flex';
+    startChatListener();
+    setTimeout(() => $('chatInput').focus(), 300);
+}
+
+window.submitChatPass = () => {
+    if (!currentUser) {
+        closeChatModal();
+        openLoginModal();
+        return;
+    }
+    const entered = $('chatPassInput').value;
+    if (entered === CHAT_PASS) {
+        chatUnlocked = true;
+        showChatContent();
+    } else {
+        $('chatPassError').classList.add('show');
+        $('chatPassInput').value = '';
+        $('chatPassInput').classList.add('shake');
+        setTimeout(() => $('chatPassInput').classList.remove('shake'), 400);
+    }
+};
+
+function startChatListener() {
+    if (chatUnsubscribe) return;
+    const chatRef = collection(db, 'chat');
+    chatUnsubscribe = onSnapshot(query(chatRef, orderBy('date', 'asc')), snap => {
+        const msgs = $('chatMessages');
+        if (!msgs) return;
+        msgs.innerHTML = '';
+        snap.docs.forEach(d => {
+            const msg = d.data();
+            const isMe = currentUser && msg.uid === currentUser.uid;
+            const isAdminMsg = msg.email === ADMIN_EMAIL;
+            const div = document.createElement('div');
+            div.className = 'chat-msg' + (isMe ? ' chat-msg-me' : '');
+            div.innerHTML = `
+                <div class="chat-msg-author">${isAdminMsg ? '👑 ' : ''}${msg.author || 'Anonim'}</div>
+                <div class="chat-msg-bubble">${escHtml(msg.text)}</div>
+                <div class="chat-msg-time">${timeAgo(msg.date)}</div>
+                ${currentUser && currentUser.email === ADMIN_EMAIL ? `<button class="chat-delete-btn" onclick="adminDeleteChatMsg('${d.id}')">✕</button>` : ''}
+            `;
+            msgs.appendChild(div);
+        });
+        msgs.scrollTop = msgs.scrollHeight;
+    });
+}
+
+window.sendChatMessage = async () => {
+    if (!currentUser || !chatUnlocked) return;
+    const inp = $('chatInput');
+    const text = inp.value.trim();
+    if (!text) return;
+    inp.value = '';
+    try {
+        await addDoc(collection(db, 'chat'), {
+            text,
+            author: currentUser.displayName || 'Anonim',
+            email: currentUser.email,
+            uid: currentUser.uid,
+            date: Date.now()
+        });
+    } catch (e) {
+        showToast('Yuborilmadi: ' + e.message, 'error');
+        inp.value = text;
+    }
+};
+
+window.adminDeleteChatMsg = async (msgId) => {
+    try {
+        await deleteDoc(doc(db, 'chat', msgId));
+    } catch (e) {
+        showToast('Xatolik: ' + e.message, 'error');
+    }
+};
+
+// ── ADMIN PANEL ────────────────────────────────────────────
+window.openAdminPanel = () => {
+    if (!currentUser || currentUser.email !== ADMIN_EMAIL) {
+        showToast("Ruxsat yo'q!", 'error');
+        return;
+    }
+    $('adminModal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    loadAdminMedia();
+    loadBlockedUsers();
+};
+window.closeAdminPanel = () => {
+    $('adminModal').classList.remove('open');
+    document.body.style.overflow = '';
+};
+
+window.adminTab = (tab) => {
+    ['media','chat','settings'].forEach(t => {
+        const tabEl = $('admin' + t.charAt(0).toUpperCase() + t.slice(1) + 'Tab');
+        if (tabEl) tabEl.style.display = t === tab ? 'block' : 'none';
+    });
+    ['aTab1','aTab2','aTab3'].forEach(id => $(id) && $(id).classList.remove('active'));
+    const tabMap = { media: 'aTab1', chat: 'aTab2', settings: 'aTab3' };
+    if ($(tabMap[tab])) $(tabMap[tab]).classList.add('active');
+
+    if (tab === 'chat') loadAdminChatLog();
+    if (tab === 'settings') loadBlockedUsers();
+};
+
+function loadAdminMedia() {
+    const list = $('adminMediaList');
+    if (!list) return;
+    list.innerHTML = '';
+    mediaItems.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'admin-media-item';
+        div.innerHTML = `
+            <div class="admin-media-thumb">
+                ${item.thumbnail || item.url ? `<img src="${item.thumbnail || item.url}" alt="">` : '<div class="admin-no-thumb">🎬</div>'}
+            </div>
+            <div class="admin-media-info">
+                <div class="admin-media-title">${item.title || 'Nomsiz'}</div>
+                <div class="admin-media-meta">${item.author || 'Anonim'} • ${formatDate(item.date)}</div>
+            </div>
+            <div class="admin-media-actions">
+                <button class="admin-action-btn delete" onclick="adminDeleteMedia('${item.id}')">🗑 O'chirish</button>
+                ${item.uploaderUid ? `<button class="admin-action-btn block" onclick="blockUser('${item.uploaderUid}','${item.author || ''}')">🚫 Bloklash</button>` : ''}
+            </div>
+        `;
+        list.appendChild(div);
+    });
+}
+
+async function loadAdminChatLog() {
+    const list = $('adminChatList');
+    if (!list) return;
+    list.innerHTML = '<div style="color:var(--text-dim);font-size:12px">Yuklanmoqda...</div>';
+    const snap = await getDocs(query(collection(db, 'chat'), orderBy('date', 'desc')));
+    list.innerHTML = '';
+    snap.docs.forEach(d => {
+        const msg = d.data();
+        const div = document.createElement('div');
+        div.className = 'admin-chat-item';
+        div.innerHTML = `
+            <div class="admin-chat-author">${msg.author} <span style="color:var(--text-dim);font-size:11px">${formatDate(msg.date)}</span></div>
+            <div class="admin-chat-text">${escHtml(msg.text)}</div>
+            <button class="admin-action-btn delete" style="margin-top:6px" onclick="adminDeleteChatMsg('${d.id}')">🗑 O'chirish</button>
+        `;
+        list.appendChild(div);
+    });
+}
+
+async function loadBlockedUsers() {
+    const list = $('blockedUsersList');
+    if (!list) return;
+    const snap = await getDocs(collection(db, 'blocked'));
+    list.innerHTML = '';
+    if (snap.empty) { list.innerHTML = '<div style="color:var(--text-dim);font-size:12px">Bloklangan foydalanuvchilar yo\'q</div>'; return; }
+    snap.docs.forEach(d => {
+        const data = d.data();
+        const div = document.createElement('div');
+        div.className = 'blocked-user-item';
+        div.innerHTML = `
+            <span>${data.name || d.id}</span>
+            <button class="admin-action-btn" onclick="unblockUser('${d.id}')">♻ Qayta berish</button>
+        `;
+        list.appendChild(div);
+    });
+}
+
+window.blockUser = async (uid, name) => {
+    if (!confirm(`"${name}" foydalanuvchini bloklashni tasdiqlaysizmi?`)) return;
+    try {
+        await setDoc(doc(db, 'blocked', uid), { name, blockedAt: Date.now() });
+        showToast(`${name} bloklandi`, 'info');
+        loadBlockedUsers();
+    } catch (e) {
+        showToast('Xatolik: ' + e.message, 'error');
+    }
+};
+
+window.unblockUser = async (uid) => {
+    try {
+        await deleteDoc(doc(db, 'blocked', uid));
+        showToast('Blok olib tashlandi', 'success');
+        loadBlockedUsers();
+    } catch (e) {
+        showToast('Xatolik: ' + e.message, 'error');
+    }
+};
+
+window.changeChatPass = () => {
+    const newPass = $('newChatPass').value.trim();
+    if (!newPass) { showToast('Yangi parolni kiriting!', 'error'); return; }
+    CHAT_PASS = newPass;
+    localStorage.setItem(CHAT_PASS_KEY, newPass);
+    $('newChatPass').value = '';
+    showToast('Chat paroli o\'zgartirildi ✓', 'success');
+};
+
+// ── KEYBOARD ───────────────────────────────────────────────
 document.addEventListener('keydown', e => {
-    if ($('lockAuthModal').classList.contains('open')) {
-        if (e.key === 'Escape') closeLockAuthModal();
-        return;
-    }
-    if ($('unlockModal').classList.contains('open')) {
-        if (e.key === 'Escape') closeUnlockModal();
-        return;
-    }
+    if ($('lockAuthModal').classList.contains('open')) { if (e.key === 'Escape') closeLockAuthModal(); return; }
+    if ($('unlockModal').classList.contains('open')) { if (e.key === 'Escape') closeUnlockModal(); return; }
     if ($('lightbox').classList.contains('open')) {
         if (e.key === 'ArrowRight') lbNav(1);
         if (e.key === 'ArrowLeft') lbNav(-1);
@@ -811,4 +1143,38 @@ document.addEventListener('keydown', e => {
     }
     if ($('passModal').classList.contains('open') && e.key === 'Escape') closePassModal();
     if ($('uploadModal').classList.contains('open') && e.key === 'Escape') closeUploadModal();
+    if ($('loginModal').classList.contains('open') && e.key === 'Escape') closeLoginModal();
+    if ($('chatModal').classList.contains('open') && e.key === 'Escape') closeChatModal();
+    if ($('adminModal').classList.contains('open') && e.key === 'Escape') closeAdminPanel();
 });
+
+// ── PWA ────────────────────────────────────────────────────
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredPrompt = e;
+    const banner = $('pwaBanner');
+    if (banner && !localStorage.getItem('8bhub_pwa_dismissed')) {
+        setTimeout(() => { banner.style.display = 'flex'; }, 3000);
+    }
+});
+
+window.installPWA = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    $('pwaBanner').style.display = 'none';
+    if (outcome === 'accepted') showToast('Ilova o\'rnatildi! 📱', 'success');
+};
+
+document.getElementById('pwaBanner')?.querySelector('.pwa-close-btn')?.addEventListener('click', () => {
+    localStorage.setItem('8bhub_pwa_dismissed', '1');
+});
+
+// Register service worker
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+}
