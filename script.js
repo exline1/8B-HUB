@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, updateDoc, orderBy, query, getDocs, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyBqIgNlvEt58sf-_b4vjFwRsV-NwH6ocKU",
@@ -103,6 +103,17 @@ function showToast(msg, type = 'success') {
 // ── GOOGLE AUTH ────────────────────────────────────────────
 const provider = new GoogleAuthProvider();
 
+// Redirect dan qaytganda (PWA uchun)
+getRedirectResult(auth).then(result => {
+    if (result?.user) {
+        closeLoginModal();
+        showToast('Xush kelibsiz! 👋', 'success');
+    }
+}).catch(e => {
+    if (e.code !== 'auth/no-current-user')
+        showToast('Login xatolik: ' + e.message, 'error');
+});
+
 onAuthStateChanged(auth, async user => {
     currentUser = user;
     updateAuthUI();
@@ -156,9 +167,13 @@ function updateAuthUI() {
 
 window.doGoogleLogin = async () => {
     try {
-        await signInWithPopup(auth, provider);
-        closeLoginModal();
-        showToast('Xush kelibsiz! 👋', 'success');
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+            await signInWithRedirect(auth, provider);
+        } else {
+            await signInWithPopup(auth, provider);
+            closeLoginModal();
+            showToast('Xush kelibsiz! 👋', 'success');
+        }
     } catch (e) {
         showToast('Login xatolik: ' + e.message, 'error');
     }
