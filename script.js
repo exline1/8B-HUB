@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, updateDoc, orderBy, query, getDocs, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyBqIgNlvEt58sf-_b4vjFwRsV-NwH6ocKU",
@@ -163,9 +163,19 @@ function updateAuthUI() {
 
 window.doGoogleLogin = async () => {
     try {
-        await signInWithRedirect(auth, provider);
+        await signInWithPopup(auth, provider);
+        closeLoginModal();
+        showToast('Xush kelibsiz! 👋', 'success');
     } catch (e) {
-        showToast('Login xatolik: ' + e.message, 'error');
+        if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
+            try {
+                await signInWithRedirect(auth, provider);
+            } catch (e2) {
+                showToast('Login xatolik: ' + e2.message, 'error');
+            }
+        } else if (e.code !== 'auth/cancelled-popup-request') {
+            showToast('Login xatolik: ' + e.message, 'error');
+        }
     }
 };
 
