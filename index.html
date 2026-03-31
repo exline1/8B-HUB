@@ -10,6 +10,12 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap"
         rel="stylesheet">
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#090910">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="8B HUB">
 </head>
 
 <body>
@@ -52,6 +58,13 @@
                 </svg>
                 Videolar
             </button>
+            <button class="nav-btn" id="nb-chat" onclick="openChatModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                Chat
+            </button>
             <button class="upload-btn" onclick="openUploadModal()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
                     stroke-linejoin="round">
@@ -60,6 +73,45 @@
                 </svg>
                 Yuklash
             </button>
+            <button class="nav-btn" id="loginBtn" onclick="openLoginModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                </svg>
+                Login
+            </button>
+            <div class="user-pill" id="userPill" style="display:none" onclick="toggleUserMenu()">
+                <img id="userAvatar" src="" alt="" class="user-pill-avatar">
+                <span id="userDisplayName"></span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round" style="width:12px;height:12px">
+                    <polyline points="6 9 12 15 18 9" />
+                </svg>
+            </div>
+            <div class="user-menu" id="userMenu" style="display:none">
+                <div class="user-menu-info">
+                    <img id="userMenuAvatar" src="" alt="">
+                    <div>
+                        <div id="userMenuName" style="font-weight:600;font-size:14px"></div>
+                        <div id="userMenuEmail" style="font-size:11px;color:var(--text-dim)"></div>
+                    </div>
+                </div>
+                <div id="adminMenuBtn" style="display:none">
+                    <button class="user-menu-item admin-item" onclick="openAdminPanel();toggleUserMenu()">
+                        👑 Admin panel
+                    </button>
+                </div>
+                <button class="user-menu-item logout-item" onclick="doLogout()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" style="width:14px;height:14px">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                        <polyline points="16 17 21 12 16 7" />
+                        <line x1="21" y1="12" x2="9" y2="12" />
+                    </svg>
+                    Chiqish
+                </button>
+            </div>
         </div>
         <button class="hamburger" onclick="document.getElementById('mobileNav').classList.toggle('open')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -99,6 +151,12 @@
                 <rect x="1" y="5" width="15" height="14" rx="2" />
             </svg>Videolar
         </button>
+        <button class="nav-btn" onclick="openChatModal();document.getElementById('mobileNav').classList.remove('open')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>Chat
+        </button>
         <button class="upload-btn"
             onclick="openUploadModal();document.getElementById('mobileNav').classList.remove('open')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
@@ -106,6 +164,14 @@
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
             </svg>Yuklash
+        </button>
+        <button class="nav-btn" id="mobileLoginBtn"
+            onclick="openLoginModal();document.getElementById('mobileNav').classList.remove('open')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+            </svg>Login
         </button>
     </div>
 
@@ -166,44 +232,34 @@
 
         <div class="filter-bar" id="gridAnchor">
             <span class="filter-lbl">Ko'rish:</span>
-            <button class="ftab active" id="ft-all" onclick="filterMedia('all')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round">
+            <button class="ftab active" id="ft-all" onclick="filterMedia('all')"><svg viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="3" width="7" height="7" />
                     <rect x="14" y="3" width="7" height="7" />
                     <rect x="14" y="14" width="7" height="7" />
                     <rect x="3" y="14" width="7" height="7" />
-                </svg>Hammasi
-            </button>
-            <button class="ftab" id="ft-photo" onclick="filterMedia('photo')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round">
+                </svg>Hammasi</button>
+            <button class="ftab" id="ft-photo" onclick="filterMedia('photo')"><svg viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="3" width="18" height="18" rx="2" />
                     <circle cx="8.5" cy="8.5" r="1.5" />
                     <polyline points="21 15 16 10 5 21" />
-                </svg>Rasmlar
-            </button>
-            <button class="ftab" id="ft-video" onclick="filterMedia('video')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round">
+                </svg>Rasmlar</button>
+            <button class="ftab" id="ft-video" onclick="filterMedia('video')"><svg viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polygon points="23 7 16 12 23 17 23 7" />
                     <rect x="1" y="5" width="15" height="14" rx="2" />
-                </svg>Videolar
-            </button>
-            <button class="ftab" id="ft-new" onclick="sortMedia('date')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round">
+                </svg>Videolar</button>
+            <button class="ftab active" id="ft-new" onclick="sortMedia('date')"><svg viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="10" />
                     <polyline points="12 6 12 12 16 14" />
-                </svg>Yangi
-            </button>
-            <button class="ftab" id="ft-top" onclick="sortMedia('likes')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round">
+                </svg>Yangi</button>
+            <button class="ftab" id="ft-top" onclick="sortMedia('likes')"><svg viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path
                         d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                </svg>Ko'p laykli
-            </button>
+                </svg>Ko'p laykli</button>
         </div>
 
         <div class="sec-hdr">
@@ -217,12 +273,10 @@
         </div>
         <div class="media-grid" id="mediaGrid"></div>
         <div class="empty-state" id="emptyState">
-            <div class="empty-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                    stroke-linejoin="round">
+            <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                    stroke-linecap="round" stroke-linejoin="round">
                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                </svg>
-            </div>
+                </svg></div>
             <h3>Hali hech narsa yo'q</h3>
             <p>Birinchi bo'lib xotira qo'shing!<br>Rasm yoki video yuklang.</p>
             <button class="btn-primary" onclick="openUploadModal()" style="margin:0 auto;">
@@ -235,6 +289,44 @@
             </button>
         </div>
     </main>
+
+    <!-- ═══════ LOGIN MODAL ═══════ -->
+    <div class="modal-overlay" id="loginModal" onclick="if(event.target===this)closeLoginModal()">
+        <div class="modal login-modal">
+            <div class="modal-hdr">
+                <div class="modal-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                        <circle cx="12" cy="7" r="4" />
+                    </svg>
+                    Kirish
+                </div>
+                <button class="modal-close" onclick="closeLoginModal()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+            </div>
+            <p style="font-size:13px;color:var(--text-dim);margin-bottom:20px;line-height:1.5">Kommentariya qoldirish va
+                chatda yozish uchun kiring.</p>
+            <button class="google-login-btn" onclick="doGoogleLogin()">
+                <svg viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="#4285F4"
+                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853"
+                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05"
+                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
+                    <path fill="#EA4335"
+                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                </svg>
+                Google bilan kirish
+            </button>
+        </div>
+    </div>
 
     <!-- ═══════ UPLOAD MODAL ═══════ -->
     <div class="modal-overlay" id="uploadModal" onclick="if(event.target===this)closeUploadModal()">
@@ -257,33 +349,27 @@
                     </svg>
                 </button>
             </div>
-
-            <!-- STEP 1 -->
             <div class="upload-step active" id="step1">
                 <p style="font-size:14px;color:var(--text-dim);font-weight:500;margin-bottom:14px;">Nima yuklaysiz?</p>
                 <div class="type-selector">
                     <button class="type-opt to-photo" id="optPhoto" onclick="selectType('photo')">
-                        <div class="to-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        <div class="to-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <rect x="3" y="3" width="18" height="18" rx="2" />
                                 <circle cx="8.5" cy="8.5" r="1.5" />
                                 <polyline points="21 15 16 10 5 21" />
-                            </svg>
-                        </div>
+                            </svg></div>
                         <div>
                             <div class="to-label">Rasm</div>
                             <div class="to-sub">JPG, PNG, GIF — max 32MB</div>
                         </div>
                     </button>
                     <button class="type-opt to-video" id="optVideo" onclick="selectType('video')">
-                        <div class="to-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        <div class="to-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <polygon points="23 7 16 12 23 17 23 7" />
                                 <rect x="1" y="5" width="15" height="14" rx="2" />
-                            </svg>
-                        </div>
+                            </svg></div>
                         <div>
                             <div class="to-label">Video</div>
                             <div class="to-sub">Galareyadan — max 100MB</div>
@@ -291,34 +377,25 @@
                     </button>
                 </div>
             </div>
-
-            <!-- STEP 2 -->
             <div class="upload-step" id="step2">
-
-                <!-- PHOTO zone -->
-                <div id="photoDz">
-                    <div class="drop-zone" id="dropZone">
+                <div id="photoDz" style="display:none">
+                    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
                         <input type="file" id="fileInput" accept="image/*" onchange="handleFileSelect(event)">
-                        <div class="dz-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                                stroke-linecap="round" stroke-linejoin="round">
+                        <div class="dz-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <rect x="3" y="3" width="18" height="18" rx="2" />
                                 <circle cx="8.5" cy="8.5" r="1.5" />
                                 <polyline points="21 15 16 10 5 21" />
-                            </svg>
-                        </div>
+                            </svg></div>
                         <div class="dz-title">Rasmni shu yerga tashlang</div>
-                        <div class="dz-hint">yoki bosing va tanlang</div>
+                        <div class="dz-hint">yoki bosing — telefon galareyasidan ham tanlasa bo'ladi</div>
                     </div>
-                    <div class="file-preview" id="filePreview">
-                        <button class="fp-remove" onclick="removePhotoFile()">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                stroke-linecap="round" stroke-linejoin="round">
+                    <div class="file-preview" id="filePreview"><button class="fp-remove"
+                            onclick="removePhotoFile()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <line x1="18" y1="6" x2="6" y2="18" />
                                 <line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
-                        </button>
-                    </div>
+                            </svg></button></div>
                     <div class="size-bar" id="photoSizeBar">
                         <div class="size-top"><span id="photoSizeName"></span><span id="photoSizeVal"></span></div>
                         <div class="size-bg">
@@ -326,30 +403,23 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- VIDEO zone -->
                 <div id="videoDz" style="display:none">
-                    <div class="drop-zone" id="videoDzZone">
+                    <div class="drop-zone" id="videoDzZone" onclick="document.getElementById('videoInput').click()">
                         <input type="file" id="videoInput" accept="video/*" onchange="handleVideoSelect(event)">
-                        <div class="dz-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                                stroke-linecap="round" stroke-linejoin="round">
+                        <div class="dz-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <polygon points="23 7 16 12 23 17 23 7" />
                                 <rect x="1" y="5" width="15" height="14" rx="2" />
-                            </svg>
-                        </div>
+                            </svg></div>
                         <div class="dz-title">Videoni shu yerga tashlang</div>
                         <div class="dz-hint">yoki bosing — telefon galareyasidan ham tanlasa bo'ladi</div>
                     </div>
-                    <div class="file-preview" id="videoPreview">
-                        <button class="fp-remove" onclick="removeVideoFile()">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                stroke-linecap="round" stroke-linejoin="round">
+                    <div class="file-preview" id="videoPreview"><button class="fp-remove"
+                            onclick="removeVideoFile()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <line x1="18" y1="6" x2="6" y2="18" />
                                 <line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
-                        </button>
-                    </div>
+                            </svg></button></div>
                     <div class="size-bar" id="videoSizeBar">
                         <div class="size-top"><span id="videoSizeName"></span><span id="videoSizeVal"></span></div>
                         <div class="size-bg">
@@ -374,7 +444,6 @@
                     <input class="form-input" id="mediaAuthor" placeholder="Ismingiz" maxlength="40">
                 </div>
 
-                <!-- LOCK SECTION -->
                 <div class="lock-toggle-wrap">
                     <button class="lock-toggle-btn" id="lockToggleBtn" onclick="toggleLockSection()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -396,8 +465,7 @@
                                 <line x1="12" y1="8" x2="12" y2="12" />
                                 <line x1="12" y1="16" x2="12.01" y2="16" />
                             </svg>
-                            Parol qo'yilsa, boshqalar ko'rish uchun shu parolni kiritishi kerak bo'ladi. Default parol
-                            avtomatik to'ldirilgan.
+                            Parol qo'yilsa, boshqalar ko'rish uchun shu parolni kiritishi kerak bo'ladi.
                         </div>
                         <div class="form-group" style="margin-bottom:8px">
                             <label class="form-label">Parol</label>
@@ -425,13 +493,10 @@
                 </div>
 
                 <div class="modal-actions">
-                    <button class="back-btn" onclick="goStep1()">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                            stroke-linecap="round" stroke-linejoin="round">
+                    <button class="back-btn" onclick="goStep1()"><svg viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="15 18 9 12 15 6" />
-                        </svg>
-                        Orqaga
-                    </button>
+                        </svg>Orqaga</button>
                     <button class="submit-btn" id="submitBtn" onclick="submitMedia()" disabled>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                             stroke-linecap="round" stroke-linejoin="round">
@@ -458,13 +523,11 @@
                     </svg>
                     O'chirish uchun parol
                 </div>
-                <button class="modal-close" onclick="closePassModal()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round">
+                <button class="modal-close" onclick="closePassModal()"><svg viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="18" y1="6" x2="6" y2="18" />
                         <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                </button>
+                    </svg></button>
             </div>
             <div class="form-group">
                 <label class="form-label">Parolni kiriting</label>
@@ -489,7 +552,7 @@
         </div>
     </div>
 
-    <!-- ═══════ LOCK AUTH MODAL (qulf qo'yishdan oldin tasdiqlash) ═══════ -->
+    <!-- ═══════ LOCK AUTH MODAL ═══════ -->
     <div class="modal-overlay" id="lockAuthModal" onclick="if(event.target===this)closeLockAuthModal()">
         <div class="modal pass-modal">
             <div class="modal-hdr">
@@ -501,22 +564,17 @@
                     </svg>
                     Qulf qo'yish — tasdiqlash
                 </div>
-                <button class="modal-close" onclick="closeLockAuthModal()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round">
+                <button class="modal-close" onclick="closeLockAuthModal()"><svg viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="18" y1="6" x2="6" y2="18" />
                         <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                </button>
+                    </svg></button>
             </div>
-            <p style="font-size:13px;color:rgba(255,255,255,0.55);margin-bottom:14px;line-height:1.5">
-                Qulf qo'yish huquqini tasdiqlash uchun yagona parolni kiriting.
-            </p>
             <div class="form-group">
                 <label class="form-label">Parolni kiriting</label>
                 <input class="form-input" id="lockAuthInput" type="password" placeholder="••••••••"
                     onkeydown="if(event.key==='Enter')confirmLockAuth()">
-                <div class="pass-error" id="lockAuthError">Parol noto'g'ri! Qayta urinib ko'ring.</div>
+                <div class="pass-error" id="lockAuthError">Parol noto'g'ri!</div>
             </div>
             <div class="pass-actions">
                 <button class="pass-cancel" onclick="closeLockAuthModal()">Bekor qilish</button>
@@ -544,13 +602,11 @@
                     </svg>
                     Parolni kiriting
                 </div>
-                <button class="modal-close" onclick="closeUnlockModal()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round">
+                <button class="modal-close" onclick="closeUnlockModal()"><svg viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="18" y1="6" x2="6" y2="18" />
                         <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                </button>
+                    </svg></button>
             </div>
             <div class="unlock-thumb-wrap" id="unlockThumb"></div>
             <p class="unlock-desc">Bu kontent parol bilan himoyalangan. Ko'rish uchun parol kiriting.</p>
@@ -573,7 +629,7 @@
                         </svg>
                     </button>
                 </div>
-                <div class="unlock-error" id="unlockError">Parol noto'g'ri! Qayta urinib ko'ring.</div>
+                <div class="unlock-error" id="unlockError">Parol noto'g'ri!</div>
             </div>
             <button class="submit-btn" onclick="submitUnlock()" style="width:100%;margin-top:4px">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
@@ -589,28 +645,152 @@
     <!-- ═══════ LIGHTBOX ═══════ -->
     <div class="lightbox" id="lightbox" onclick="if(event.target===this)closeLightbox()">
         <div class="lb-inner">
-            <button class="lb-close" onclick="closeLightbox()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round">
+            <button class="lb-close" onclick="closeLightbox()"><svg viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="18" y1="6" x2="6" y2="18" />
                     <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-            </button>
-            <button class="lb-nav lb-prev" onclick="lbNav(-1)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round">
+                </svg></button>
+            <button class="lb-nav lb-prev" onclick="lbNav(-1)"><svg viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="15 18 9 12 15 6" />
-                </svg>
-            </button>
+                </svg></button>
             <div id="lbMedia"></div>
-            <button class="lb-nav lb-next" onclick="lbNav(1)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round">
+            <button class="lb-nav lb-next" onclick="lbNav(1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="9 18 15 12 9 6" />
-                </svg>
-            </button>
+                </svg></button>
             <div class="lb-info" id="lbInfo"></div>
+            <!-- Comments section in lightbox -->
+            <div class="lb-comments" id="lbComments">
+                <div class="lb-comments-hdr">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" style="width:15px;height:15px">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    Kommentariyalar
+                </div>
+                <div class="lb-comments-list" id="lbCommentsList"></div>
+                <div class="lb-comment-form" id="lbCommentForm">
+                    <input class="lb-comment-input" id="lbCommentInput" placeholder="Kommentariya yozing..."
+                        maxlength="200"
+                        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitComment()}">
+                    <button class="lb-comment-send" onclick="submitComment()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13" />
+                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="lb-comment-login-hint" id="lbCommentLoginHint" style="display:none">
+                    <span>Kommentariya yozish uchun</span>
+                    <button onclick="closeLoginModal();openLoginModal()">Kirish</button>
+                </div>
+            </div>
         </div>
+    </div>
+
+    <!-- ═══════ CHAT MODAL ═══════ -->
+    <div class="modal-overlay" id="chatModal" onclick="if(event.target===this)closeChatModal()">
+        <div class="modal chat-modal">
+            <div class="modal-hdr">
+                <div class="modal-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    8B Sinf Chat
+                    <span class="chat-online-dot"></span>
+                </div>
+                <button class="modal-close" onclick="closeChatModal()"><svg viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg></button>
+            </div>
+            <!-- Chat lock screen -->
+            <div id="chatLockScreen">
+                <div class="chat-lock-icon">🔐</div>
+                <p style="color:var(--text-dim);font-size:14px;margin-bottom:16px">Bu chat maxfiy. Kirish uchun chat
+                    parolini kiriting.</p>
+                <div class="form-group">
+                    <input class="form-input" id="chatPassInput" type="password" placeholder="Chat paroli..."
+                        onkeydown="if(event.key==='Enter')submitChatPass()">
+                    <div class="pass-error" id="chatPassError">Parol noto'g'ri!</div>
+                </div>
+                <button class="submit-btn" onclick="submitChatPass()" style="width:100%;margin-top:8px">Kirish</button>
+                <p style="font-size:11px;color:var(--text-dim);margin-top:10px;text-align:center">Login qilmagan
+                    bo'lsangiz avval login qiling</p>
+            </div>
+            <!-- Chat content -->
+            <div id="chatContent" style="display:none">
+                <div class="chat-messages" id="chatMessages"></div>
+                <div class="chat-input-row">
+                    <input class="chat-input" id="chatInput" placeholder="Xabar yozing..." maxlength="500"
+                        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage()}">
+                    <button class="chat-send-btn" onclick="sendChatMessage()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13" />
+                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════ ADMIN PANEL ═══════ -->
+    <div class="modal-overlay" id="adminModal" onclick="if(event.target===this)closeAdminPanel()">
+        <div class="modal admin-modal">
+            <div class="modal-hdr">
+                <div class="modal-title">👑 Admin Panel</div>
+                <button class="modal-close" onclick="closeAdminPanel()"><svg viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg></button>
+            </div>
+            <div class="admin-tabs">
+                <button class="admin-tab active" id="aTab1" onclick="adminTab('media')">Media</button>
+                <button class="admin-tab" id="aTab2" onclick="adminTab('chat')">Chat log</button>
+                <button class="admin-tab" id="aTab3" onclick="adminTab('settings')">Sozlamalar</button>
+            </div>
+            <div id="adminMediaTab">
+                <div style="font-size:13px;color:var(--text-dim);margin-bottom:12px">Barcha media — o'chirish va
+                    bloklash</div>
+                <div id="adminMediaList" class="admin-media-list"></div>
+            </div>
+            <div id="adminChatTab" style="display:none">
+                <div style="font-size:13px;color:var(--text-dim);margin-bottom:12px">Barcha chat xabarlari</div>
+                <div id="adminChatList" class="admin-chat-list"></div>
+            </div>
+            <div id="adminSettingsTab" style="display:none">
+                <div class="admin-setting-row">
+                    <label class="form-label">Chat paroli o'zgartirish</label>
+                    <div style="display:flex;gap:8px">
+                        <input class="form-input" id="newChatPass" type="text" placeholder="Yangi parol">
+                        <button class="submit-btn" onclick="changeChatPass()"
+                            style="white-space:nowrap;padding:10px 16px">Saqlash</button>
+                    </div>
+                </div>
+                <div class="admin-setting-row">
+                    <label class="form-label">Bloklangan foydalanuvchilar</label>
+                    <div id="blockedUsersList" class="blocked-users-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════ PWA INSTALL BANNER ═══════ -->
+    <div class="pwa-banner" id="pwaBanner" style="display:none">
+        <div class="pwa-banner-icon">📱</div>
+        <div class="pwa-banner-text">
+            <strong>8B HUB ilovasini o'rnating</strong>
+            <span>Telefon ekraniga qo'shing — tezroq ishlaydi!</span>
+        </div>
+        <button class="pwa-install-btn" onclick="installPWA()">O'rnatish</button>
+        <button class="pwa-close-btn" onclick="document.getElementById('pwaBanner').style.display='none'">✕</button>
     </div>
 
     <div class="toasts" id="toasts"></div>
