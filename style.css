@@ -2494,6 +2494,7 @@ main {
     flex-direction: column;
     gap: 5px;
     flex-shrink: 0;
+    min-width: 110px;
 }
 
 .admin-chat-item {
