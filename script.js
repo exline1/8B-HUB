@@ -1351,64 +1351,31 @@ setInterval(() => {
 }, 30000);
 
 // ── MUSIC PLAYER (SoundCloud) ──────────────────────────────
-const TRACKS = [
-    { title: "Lofi Hip Hop Mix", url: "https://soundcloud.com/lofirecords/sets/lofi-hip-hop" },
-    { title: "Chill Vibes", url: "https://soundcloud.com/chillhopmusic" },
-];
-
-let musicPlaying = false;
 let musicExpanded = false;
-let currentTrack = 0;
-let scWidget = null;
+let musicIframeAdded = false;
 
 window.toggleMusic = () => {
     musicExpanded = !musicExpanded;
     const info = $('musicInfo');
     if (info) info.style.display = musicExpanded ? 'flex' : 'none';
-    if (musicExpanded && !scWidget) initMusicPlayer();
+    if (musicExpanded && !musicIframeAdded) {
+        musicIframeAdded = true;
+        const container = document.createElement('div');
+        container.id = 'scPlayerWrap';
+        container.style.cssText = 'position:fixed;bottom:140px;right:20px;z-index:899;border-radius:16px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.5);width:300px';
+        container.innerHTML = `<iframe width="100%" height="166" scrolling="no" frameborder="no" allow="autoplay"
+            src="https://w.soundcloud.com/player/?url=https%3A//soundcloud.com/nocopyrightsounds&auto_play=true&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false&visual=false&buying=false&sharing=false&download=false&color=%23ff6b00">
+        </iframe>`;
+        document.body.appendChild(container);
+        if ($('musicTitle')) $('musicTitle').textContent = '♪ NCS Music';
+    }
+    const wrap = $('scPlayerWrap');
+    if (wrap) wrap.style.display = musicExpanded ? 'block' : 'none';
 };
 
-function initMusicPlayer() {
-    const title = $('musicTitle');
-    if (title) title.textContent = 'Yuklanmoqda...';
-    // SoundCloud widget iframe
-    let iframe = document.getElementById('scIframe');
-    if (!iframe) {
-        iframe = document.createElement('iframe');
-        iframe.id = 'scIframe';
-        iframe.style.cssText = 'display:none;width:0;height:0;border:none;position:fixed;top:-999px';
-        iframe.allow = 'autoplay';
-        document.body.appendChild(iframe);
-    }
-    iframe.src = `https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/1614659000&auto_play=true&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false`;
-    
-    if (typeof SC !== 'undefined') {
-        scWidget = SC.Widget(iframe);
-        scWidget.bind(SC.Widget.Events.READY, () => {
-            scWidget.play();
-            musicPlaying = true;
-            if ($('musicPlayBtn')) $('musicPlayBtn').textContent = '⏸';
-            if ($('musicTitle')) $('musicTitle').textContent = 'Musiqa ijro etilmoqda';
-        });
-    } else {
-        if ($('musicTitle')) $('musicTitle').textContent = '♪ Ijro etilmoqda';
-        musicPlaying = true;
-    }
-}
-
-window.togglePlayPause = () => {
-    if (!scWidget) return;
-    if (musicPlaying) {
-        scWidget.pause();
-        if ($('musicPlayBtn')) $('musicPlayBtn').textContent = '▶️';
-    } else {
-        scWidget.play();
-        if ($('musicPlayBtn')) $('musicPlayBtn').textContent = '⏸';
-    }
-    musicPlaying = !musicPlaying;
-};
-window.nextTrack = () => { if (scWidget) scWidget.next(); };
-window.prevTrack = () => { if (scWidget) scWidget.prev(); };
+window.togglePlayPause = () => {};
+window.nextTrack = () => {};
+window.prevTrack = () => {};
 
 // ── PWA ────────────────────────────────────────────────────
 let deferredPrompt = null;
