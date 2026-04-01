@@ -1364,7 +1364,7 @@ window.toggleMusic = () => {
         container.id = 'scPlayerWrap';
         container.style.cssText = 'position:fixed;bottom:140px;right:20px;z-index:899;border-radius:16px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.5);width:300px';
         container.innerHTML = `<iframe width="100%" height="166" scrolling="no" frameborder="no" allow="autoplay"
-            src="https://w.soundcloud.com/player/?url=https%3A//soundcloud.com/nocopyrightsounds&auto_play=true&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false&visual=false&buying=false&sharing=false&download=false&color=%23ff6b00">
+            src="https://w.soundcloud.com/player/?url=https%3A//soundcloud.com/nocopyrightsounds/sets/ncs-release&auto_play=true&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false&visual=false&buying=false&sharing=false&download=false&color=%23ff6b00">
         </iframe>`;
         document.body.appendChild(container);
         if ($('musicTitle')) $('musicTitle').textContent = '♪ NCS Music';
