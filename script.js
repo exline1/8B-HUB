@@ -127,6 +127,8 @@ function updateAuthUI() {
     const mobileLoginBtn = $('mobileLoginBtn');
     const userPill = $('userPill');
     const adminMenuBtn = $('adminMenuBtn');
+    const mobileUserInfo = $('mobileUserInfo');
+    const mobileLogoutBtn = $('mobileLogoutBtn');
 
     if (currentUser) {
         if (loginBtn) loginBtn.style.display = 'none';
@@ -146,11 +148,21 @@ function updateAuthUI() {
         if (menuName) menuName.textContent = currentUser.displayName || '';
         const menuEmail = $('userMenuEmail');
         if (menuEmail) menuEmail.textContent = currentUser.email || '';
+        // Mobile user info
+        if (mobileUserInfo) {
+            mobileUserInfo.style.display = 'flex';
+            $('mobileUserAvatar').src = currentUser.photoURL || '';
+            $('mobileUserName').textContent = currentUser.displayName || 'User';
+            $('mobileUserEmail').textContent = currentUser.email || '';
+        }
+        if (mobileLogoutBtn) mobileLogoutBtn.style.display = 'flex';
     } else {
         if (loginBtn) loginBtn.style.display = 'flex';
         if (mobileLoginBtn) mobileLoginBtn.style.display = 'flex';
         if (userPill) userPill.style.display = 'none';
         if ($('userMenu')) $('userMenu').style.display = 'none';
+        if (mobileUserInfo) mobileUserInfo.style.display = 'none';
+        if (mobileLogoutBtn) mobileLogoutBtn.style.display = 'none';
     }
 }
 
@@ -238,6 +250,8 @@ function renderGrid() {
         ? mediaItems.slice()
         : mediaItems.filter(m => m.type === currentFilter);
     if (currentSort === 'likes') items.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+    // Pinned items always on top
+    items.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
     filteredItems = items;
     $('secCount').textContent = items.length + ' ta';
 
@@ -289,6 +303,14 @@ function renderGrid() {
             ? `<button class="delete-btn admin-delete" aria-label="O'chirish (admin)">${IC.trash}</button>`
             : `<button class="delete-btn" aria-label="O'chirish">${IC.trash}</button>`;
 
+        // Comment button on card
+        const commentBtn = `<button class="card-comment-btn" aria-label="Kommentariyalar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </button>`;
+
+        // Pin badge (admin only)
+        const pinBadge = item.pinned ? `<div class="pin-badge" title="Pin qilingan">📌</div>` : '';
+
         // Date/time badge
         const dateBadge = item.date ? `<div class="card-date">${formatDate(item.date)}</div>` : '';
 
@@ -300,6 +322,8 @@ function renderGrid() {
                 ${lockOverlay}
                 ${playOverlay}
                 ${deleteBtn}
+                ${commentBtn}
+                ${pinBadge}
             </div>
             <div class="card-body">
                 <div class="card-title">${item.title || 'Nomsiz'}</div>
@@ -316,6 +340,17 @@ function renderGrid() {
         card.querySelector('.like-btn').addEventListener('click', e => {
             e.stopPropagation();
             toggleLike(item.id, item.likes || 0, liked);
+        });
+
+        // Comment button — opens lightbox at comments
+        card.querySelector('.card-comment-btn').addEventListener('click', e => {
+            e.stopPropagation();
+            if (hasLock && !unlocked) { openUnlockModal(i); return; }
+            openLightbox(i);
+            setTimeout(() => {
+                const cl = $('lbComments');
+                if (cl) cl.scrollIntoView({ behavior: 'smooth' });
+            }, 400);
         });
 
         const delBtn = card.querySelector('.delete-btn');
@@ -1057,6 +1092,7 @@ function loadAdminMedia() {
             </div>
             <div class="admin-media-actions">
                 <button class="admin-action-btn delete" onclick="adminDeleteMedia('${item.id}')">🗑 O'chirish</button>
+                <button class="admin-action-btn" onclick="adminTogglePin('${item.id}',${!!item.pinned})">${item.pinned ? '📌 Pindan chiqar' : '📌 Pin qil'}</button>
                 ${item.uploaderUid ? `<button class="admin-action-btn block" onclick="blockUser('${item.uploaderUid}','${item.author || ''}')">🚫 Bloklash</button>` : ''}
             </div>
         `;
@@ -1147,6 +1183,232 @@ document.addEventListener('keydown', e => {
     if ($('chatModal').classList.contains('open') && e.key === 'Escape') closeChatModal();
     if ($('adminModal').classList.contains('open') && e.key === 'Escape') closeAdminPanel();
 });
+
+// ── PIN ────────────────────────────────────────────────────
+window.adminTogglePin = async (id, isPinned) => {
+    try {
+        await updateDoc(doc(db, 'media', id), { pinned: !isPinned });
+        showToast(isPinned ? 'Pin olib tashlandi' : 'Pin qilindi 📌', 'success');
+        loadAdminMedia();
+    } catch (e) {
+        showToast('Xatolik: ' + e.message, 'error');
+    }
+};
+
+// ── LEADERBOARD ────────────────────────────────────────────
+let lbCurrentTab = 'uploads';
+
+window.openLeaderboard = () => {
+    $('leaderboardModal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    renderLeaderboard('uploads');
+};
+window.closeLeaderboard = () => {
+    $('leaderboardModal').classList.remove('open');
+    document.body.style.overflow = '';
+};
+window.lbSwitchTab = (tab) => {
+    lbCurrentTab = tab;
+    ['lbTab1','lbTab2'].forEach(id => $(id) && $(id).classList.remove('active'));
+    $(tab === 'uploads' ? 'lbTab1' : 'lbTab2').classList.add('active');
+    renderLeaderboard(tab);
+};
+
+function renderLeaderboard(tab) {
+    const list = $('leaderboardList');
+    if (!list) return;
+    const counts = {};
+    mediaItems.forEach(item => {
+        const key = item.author || 'Anonim';
+        if (tab === 'uploads') {
+            counts[key] = (counts[key] || 0) + 1;
+        } else {
+            counts[key] = (counts[key] || 0) + (item.likes || 0);
+        }
+    });
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const medals = ['🥇','🥈','🥉'];
+    list.innerHTML = sorted.length ? sorted.map(([name, val], i) => `
+        <div class="lb-row">
+            <span class="lb-rank">${medals[i] || (i + 1)}</span>
+            <div class="lb-ava">${name[0].toUpperCase()}</div>
+            <span class="lb-name">${name}</span>
+            <span class="lb-val">${val} ${tab === 'uploads' ? 'ta' : '❤️'}</span>
+        </div>
+    `).join('') : '<div style="color:var(--text-dim);font-size:13px;padding:12px 0">Hali ma\'lumot yo\'q</div>';
+}
+
+// ── BIRTHDAY ───────────────────────────────────────────────
+window.openBirthdayModal = async () => {
+    $('birthdayModal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    if (currentUser) {
+        $('myBirthdaySection').style.display = 'block';
+        // Load own birthday
+        try {
+            const bdDoc = await getDoc(doc(db, 'birthdays', currentUser.uid));
+            if (bdDoc.exists()) $('myBdayInput').value = bdDoc.data().date || '';
+        } catch(e) {}
+    }
+    loadBirthdays();
+};
+window.closeBirthdayModal = () => {
+    $('birthdayModal').classList.remove('open');
+    document.body.style.overflow = '';
+};
+window.saveBirthday = async () => {
+    if (!currentUser) return;
+    const date = $('myBdayInput').value;
+    if (!date) { showToast("Sanani tanlang!", 'error'); return; }
+    try {
+        await setDoc(doc(db, 'birthdays', currentUser.uid), {
+            date, name: currentUser.displayName || 'Anonim', uid: currentUser.uid
+        });
+        showToast("Saqlandi! 🎂", 'success');
+        loadBirthdays();
+    } catch(e) { showToast("Xatolik: " + e.message, 'error'); }
+};
+
+async function loadBirthdays() {
+    const list = $('birthdayList');
+    if (!list) return;
+    list.innerHTML = '<div style="color:var(--text-dim);font-size:12px">Yuklanmoqda...</div>';
+    try {
+        const snap = await getDocs(collection(db, 'birthdays'));
+        const today = new Date();
+        const toMD = d => { const dt = new Date(d); return (dt.getMonth() + 1) * 100 + dt.getDate(); };
+        const todayMD = (today.getMonth() + 1) * 100 + today.getDate();
+        const items = snap.docs.map(d => d.data()).filter(b => b.date);
+        items.sort((a, b) => {
+            const aMD = toMD(a.date), bMD = toMD(b.date);
+            const aDiff = (aMD - todayMD + 1231) % 1231;
+            const bDiff = (bMD - todayMD + 1231) % 1231;
+            return aDiff - bDiff;
+        });
+        list.innerHTML = items.length ? items.slice(0, 15).map(b => {
+            const dt = new Date(b.date);
+            const isToday = dt.getDate() === today.getDate() && dt.getMonth() === today.getMonth();
+            const months = ['Yan','Feb','Mar','Apr','May','Iyn','Iyl','Avg','Sen','Okt','Noy','Dek'];
+            return `<div class="birthday-row${isToday ? ' birthday-today' : ''}">
+                <span class="bday-icon">${isToday ? '🎉' : '🎂'}</span>
+                <span class="bday-name">${b.name}</span>
+                <span class="bday-date">${dt.getDate()} ${months[dt.getMonth()]}</span>
+                ${isToday ? '<span class="bday-today-badge">Bugun!</span>' : ''}
+            </div>`;
+        }).join('') : '<div style="color:var(--text-dim);font-size:13px">Hali hech kim qo\'shmagan</div>';
+    } catch(e) { list.innerHTML = '<div style="color:#ff6b6b;font-size:12px">Xatolik</div>'; }
+}
+
+// ── WAKE LOCK (ekran qotmaslik) ────────────────────────────
+let wakeLock = null;
+
+async function requestWakeLock() {
+    // Screen Wake Lock API - zamonaviy qurilmalar uchun
+    if ('wakeLock' in navigator) {
+        try {
+            wakeLock = await navigator.wakeLock.request('screen');
+            wakeLock.addEventListener('release', () => { wakeLock = null; });
+            return;
+        } catch(e) {}
+    }
+    // Fallback: video trick - eski qurilmalar uchun (J seriya va h.k.)
+    startVideoWakeLock();
+}
+
+function startVideoWakeLock() {
+    try {
+        const v = document.createElement('video');
+        v.setAttribute('playsinline', '');
+        v.setAttribute('webkit-playsinline', '');
+        v.muted = true;
+        v.loop = true;
+        // 1x1 transparent mp4 — minimal resurs
+        v.src = 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAAs1tZGF0AAACrgYF//+q3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE0MiByMjM4OSA5NTZjOGQ4IC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAxNCAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTEgcmVmPTMgZGVibG9jaz0xOjA6MCBhbmFseXNlPTB4MzoweDExMyBtZT1oZXggc3VibWU9NyBwc3k9MSBwc3lfcmQ9MS4wMDowLjAwIG1peGVkX3JlZj0xIG1lX3JhbmdlPTE2IGNocm9tYV9tZT0xIHRyZWxsaXM9MSA4eDhkY3Q9MSBjcW09MCBkZWFkem9uZT0yMSwxMSBmYXN0X3Bza2lwPTEgY2hyb21hX3FwX29mZnNldD0tMiB0aHJlYWRzPTYgbG9va2FoZWFkX3RocmVhZHM9MSBzbGljZWRfdGhyZWFkcz0wIG5yPTAgZGVjaW1hdGU9MSBpbnRlcmxhY2VkPTAgYmx1cmF5X2NvbXBhdD0wIGNvbnN0cmFpbmVkX2ludHJhPTAgYmZyYW1lcz0zIGJfcHlyYW1pZD0yIGJfYWRhcHQ9MSBiX2JpYXM9MCBkaXJlY3Q9MSB3ZWlnaHRiPTEgb3Blbl9nb3A9MCB3ZWlnaHRwPTIga2V5aW50PTI1MCBrZXlpbnRfbWluPTI1IHNjZW5lY3V0PTQwIGludHJhX3JlZnJlc2g9MCByY19sb29rYWhlYWQ9NDAgcmM9Y3JmIG1idHJlZT0xIGNyZj0yMy4wIHFjb21wPTAuNjAgcXBtaW49MCBxcG1heD02OSBxcHN0ZXA9NCBpcF9yYXRpbz0xLjQwIGFxPTE6MS4wMACAAAAPZWxpYnJhcnkAAAAMbGlicmFyeSBmb3IgdmlkZW8AAA==';
+        v.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0.01;top:-2px;left:-2px;pointer-events:none;z-index:-1';
+        document.body.appendChild(v);
+        v.play().catch(() => {});
+    } catch(e) {}
+}
+
+// Visibility change da wake lock ni qaytarish
+document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && 'wakeLock' in navigator) {
+        try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+    }
+});
+
+// Sahifa yuklanganda wake lock boshlash
+requestWakeLock();
+
+// No-sleep: har 30 soniyada touch event simulatsiyasi (eng kuchli fallback)
+setInterval(() => {
+    if (document.visibilityState === 'visible') {
+        try {
+            const e = new Event('touchstart', { bubbles: true, cancelable: true });
+            document.dispatchEvent(e);
+        } catch(x) {}
+    }
+}, 30000);
+
+// ── MUSIC PLAYER (SoundCloud) ──────────────────────────────
+const TRACKS = [
+    { title: "Lofi Hip Hop Mix", url: "https://soundcloud.com/lofirecords/sets/lofi-hip-hop" },
+    { title: "Chill Vibes", url: "https://soundcloud.com/chillhopmusic" },
+];
+
+let musicPlaying = false;
+let musicExpanded = false;
+let currentTrack = 0;
+let scWidget = null;
+
+window.toggleMusic = () => {
+    musicExpanded = !musicExpanded;
+    const info = $('musicInfo');
+    if (info) info.style.display = musicExpanded ? 'flex' : 'none';
+    if (musicExpanded && !scWidget) initMusicPlayer();
+};
+
+function initMusicPlayer() {
+    const title = $('musicTitle');
+    if (title) title.textContent = 'Yuklanmoqda...';
+    // SoundCloud widget iframe
+    let iframe = document.getElementById('scIframe');
+    if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'scIframe';
+        iframe.style.cssText = 'display:none;width:0;height:0;border:none;position:fixed;top:-999px';
+        iframe.allow = 'autoplay';
+        document.body.appendChild(iframe);
+    }
+    iframe.src = `https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/1614659000&auto_play=true&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false`;
+    
+    if (typeof SC !== 'undefined') {
+        scWidget = SC.Widget(iframe);
+        scWidget.bind(SC.Widget.Events.READY, () => {
+            scWidget.play();
+            musicPlaying = true;
+            if ($('musicPlayBtn')) $('musicPlayBtn').textContent = '⏸';
+            if ($('musicTitle')) $('musicTitle').textContent = 'Musiqa ijro etilmoqda';
+        });
+    } else {
+        if ($('musicTitle')) $('musicTitle').textContent = '♪ Ijro etilmoqda';
+        musicPlaying = true;
+    }
+}
+
+window.togglePlayPause = () => {
+    if (!scWidget) return;
+    if (musicPlaying) {
+        scWidget.pause();
+        if ($('musicPlayBtn')) $('musicPlayBtn').textContent = '▶️';
+    } else {
+        scWidget.play();
+        if ($('musicPlayBtn')) $('musicPlayBtn').textContent = '⏸';
+    }
+    musicPlaying = !musicPlaying;
+};
+window.nextTrack = () => { if (scWidget) scWidget.next(); };
+window.prevTrack = () => { if (scWidget) scWidget.prev(); };
 
 // ── PWA ────────────────────────────────────────────────────
 let deferredPrompt = null;
