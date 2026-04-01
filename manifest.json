@@ -3,6 +3,7 @@
     "short_name": "8B HUB",
     "description": "8-B sinf xotira arxivi",
     "start_url": "/8B-HUB/",
+    "scope": "/8B-HUB/",
     "display": "standalone",
     "background_color": "#090910",
     "theme_color": "#090910",
