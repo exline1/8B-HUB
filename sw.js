@@ -1,10 +1,10 @@
-const CACHE_NAME = '8bhub-v2';
+const CACHE_NAME = '8bhub-v3';
 const STATIC_ASSETS = [
-    '/',
-    '/index.html',
-    '/style.css',
-    '/script.js',
-    '/manifest.json',
+    '/8B-HUB/',
+    '/8B-HUB/index.html',
+    '/8B-HUB/style.css',
+    '/8B-HUB/script.js',
+    '/8B-HUB/manifest.json',
     'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap'
 ];
 
@@ -25,7 +25,6 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-    // Skip non-GET and Firebase/CDN requests
     if (event.request.method !== 'GET') return;
     const url = event.request.url;
     if (url.includes('firebaseio') || url.includes('googleapis.com/identitytoolkit') || url.includes('imgbb') || url.includes('cloudinary')) return;
